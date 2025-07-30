@@ -1,0 +1,34 @@
+{
+  "name": "space-invaders-classic",
+  "version": "1.0.0",
+  "description": "Classic 1980s Space Invaders game with pixel-perfect accuracy",
+  "main": "space-invaders.html",
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
+  },
+  "keywords": [
+    "space-invaders",
+    "arcade",
+    "1980s",
+    "canvas",
+    "pixel-art",
+    "retro-gaming"
+  ],
+  "author": "Space Invaders Classic Team",
+  "license": "MIT",
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "eslint": "^8.57.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "collectCoverageFrom": [
+      "game-logic.js"
+    ],
+    "testMatch": [
+      "**/*.test.js"
+    ]
+  }
+}

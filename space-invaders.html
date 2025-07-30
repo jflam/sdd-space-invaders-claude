@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Space Invaders - Classic 1980s Arcade</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Courier New', monospace;
+            color: #00ff00;
+        }
+        
+        #gameCanvas {
+            border: 2px solid #00ff00;
+            background-color: #000;
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+        }
+        
+        #gameInfo {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 16px;
+            z-index: 10;
+        }
+        
+        #instructions {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameInfo">
+        <div>SCORE: <span id="score">0</span></div>
+        <div>LIVES: <span id="lives">3</span></div>
+        <div>LEVEL: <span id="level">1</span></div>
+    </div>
+    
+    <canvas id="gameCanvas" width="1600" height="1200"></canvas>
+    
+    <div id="instructions">
+        <div>← → ARROW KEYS TO MOVE</div>
+        <div>SPACEBAR TO SHOOT</div>
+        <div>PRESS R TO RESTART</div>
+    </div>
+
+    <script src="game-logic.js"></script>
+    <script>
+        // Canvas setup and configuration (T023)
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Disable image smoothing for pixel-perfect rendering
+        ctx.imageSmoothingEnabled = false;
+        ctx.webkitImageSmoothingEnabled = false;
+        ctx.mozImageSmoothingEnabled = false;
+        ctx.msImageSmoothingEnabled = false;
+        
+        // Set canvas dimensions (2x scaled from original 224x256)
+        canvas.width = 1600;
+        canvas.height = 1200;
+        
+        // Create ImageData buffer for pixel manipulation
+        const imageData = ctx.createImageData(canvas.width, canvas.height);
+        const pixels = imageData.data;
+        
+        // Clear canvas to black
+        function clearCanvas() {
+            // Fill with black pixels (RGBA format)
+            for (let i = 0; i < pixels.length; i += 4) {
+                pixels[i] = 0;     // Red
+                pixels[i + 1] = 0; // Green  
+                pixels[i + 2] = 0; // Blue
+                pixels[i + 3] = 255; // Alpha (fully opaque)
+            }
+        }
+        
+        // Initialize canvas
+        clearCanvas();
+        ctx.putImageData(imageData, 0, 0);
+        
+        // Input handling system (T024)
+        const keys = {
+            left: false,
+            right: false,
+            shoot: false,
+            restart: false
+        };
+        
+        // Key mappings
+        const keyMap = {
+            'ArrowLeft': 'left',
+            'ArrowRight': 'right', 
+            ' ': 'shoot',          // Spacebar
+            'r': 'restart',
+            'R': 'restart'
+        };
+        
+        // Keyboard event handlers
+        document.addEventListener('keydown', (e) => {
+            e.preventDefault(); // Prevent default browser behavior
+            const action = keyMap[e.key];
+            if (action) {
+                keys[action] = true;
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            e.preventDefault();
+            const action = keyMap[e.key];
+            if (action) {
+                keys[action] = false;
+            }
+        });
+        
+        // Input state checking functions
+        function isKeyPressed(keyName) {
+            return keys[keyName];
+        }
+        
+        function isKeyJustPressed(keyName) {
+            // This will be enhanced in game loop for single-press detection
+            return keys[keyName];
+        }
+        
+        // Sprite rendering system (T026)
+        // Authentic 1980s Space Invaders sprite data (2x scaled)
+        const sprites = {
+            // Player cannon sprite (26x16, 2x scaled from 13x8)
+            player: [
+                [0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0],
+                [0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0],
+                [0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0],
+                [0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0],
+                [0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0],
+                [0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0],
+                [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+                [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+                [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+                [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+                [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+                [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+                [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+                [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+                [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+                [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+            ],
+            
+            // Squid alien sprite (16x16, 2x scaled from 8x8) - frame 0
+            squid0: [
+                [0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0],
+                [0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0],
+                [0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+                [0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+                [1,1,0,0,1,1,0,0,0,0,1,1,0,0,1,1],
+                [1,1,0,0,1,1,0,0,0,0,1,1,0,0,1,1],
+                [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+                [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+                [0,0,1,1,1,0,0,1,1,0,0,1,1,1,0,0],
+                [0,0,1,1,1,0,0,1,1,0,0,1,1,1,0,0],
+                [0,1,1,0,0,0,0,0,0,0,0,0,0,1,1,0],
+                [0,1,1,0,0,0,0,0,0,0,0,0,0,1,1,0],
+                [1,1,0,0,0,0,0,0,0,0,0,0,0,0,1,1],
+                [1,1,0,0,0,0,0,0,0,0,0,0,0,0,1,1],
+                [0,0,1,1,0,0,0,0,0,0,0,0,1,1,0,0],
+                [0,0,1,1,0,0,0,0,0,0,0,0,1,1,0,0]
+            ],
+            
+            // Squid alien sprite frame 1
+            squid1: [
+                [0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0],
+                [0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0],
+                [0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+                [0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0],
+                [1,1,0,0,1,1,0,0,0,0,1,1,0,0,1,1],
+                [1,1,0,0,1,1,0,0,0,0,1,1,0,0,1,1],
+                [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+                [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+                [0,0,0,1,1,0,0,1,1,0,0,1,1,0,0,0],
+                [0,0,0,1,1,0,0,1,1,0,0,1,1,0,0,0],
+                [0,0,1,1,0,0,0,0,0,0,0,0,1,1,0,0],
+                [0,0,1,1,0,0,0,0,0,0,0,0,1,1,0,0],
+                [1,1,0,0,1,1,0,0,0,0,1,1,0,0,1,1],
+                [1,1,0,0,1,1,0,0,0,0,1,1,0,0,1,1],
+                [0,0,1,1,0,0,0,0,0,0,0,0,1,1,0,0],
+                [0,0,1,1,0,0,0,0,0,0,0,0,1,1,0,0]
+            ]
+        };
+        
+        // Color palette (authentic Space Invaders colors)
+        const colors = {
+            player: [0, 255, 0, 255],      // Green
+            alien: [255, 255, 255, 255],   // White
+            bullet: [255, 255, 0, 255],    // Yellow
+            shield: [0, 255, 0, 255],      // Green
+            background: [0, 0, 0, 255]     // Black
+        };
+        
+        // Sprite rendering function
+        function drawSprite(spriteData, x, y, color) {
+            for (let row = 0; row < spriteData.length; row++) {
+                for (let col = 0; col < spriteData[row].length; col++) {
+                    if (spriteData[row][col] === 1) {
+                        const pixelX = Math.floor(x + col);
+                        const pixelY = Math.floor(y + row);
+                        
+                        // Bounds check
+                        if (pixelX >= 0 && pixelX < canvas.width && 
+                            pixelY >= 0 && pixelY < canvas.height) {
+                            const pixelIndex = (pixelY * canvas.width + pixelX) * 4;
+                            pixels[pixelIndex] = color[0];     // Red
+                            pixels[pixelIndex + 1] = color[1]; // Green
+                            pixels[pixelIndex + 2] = color[2]; // Blue
+                            pixels[pixelIndex + 3] = color[3]; // Alpha
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Game loop implementation (T025)
+        let gameState = initializeGame();
+        let lastTime = 0;
+        const targetFPS = 60;
+        const frameTime = 1000 / targetFPS; // 16.67ms per frame
+        let accumulator = 0;
+        
+        // Previous key states for single-press detection
+        const prevKeys = { ...keys };
+        
+        function updateInput() {
+            // Handle player movement
+            if (isKeyPressed('left') && gameState.player.x > 0) {
+                gameState.player.x -= 8; // 2x scaled movement speed
+            }
+            if (isKeyPressed('right') && gameState.player.x < canvas.width - gameState.player.width) {
+                gameState.player.x += 8;
+            }
+            
+            // Handle shooting (single press only)
+            if (isKeyPressed('shoot') && !prevKeys.shoot && gameState.player.canShoot) {
+                // Create player bullet
+                gameState.playerBullet = new Bullet(
+                    gameState.player.x + gameState.player.width / 2 - 1, // Center bullet
+                    gameState.player.y,
+                    8, // Speed: 8 pixels per frame upward
+                    'player'
+                );
+                gameState.player.canShoot = false;
+            }
+            
+            // Handle restart (single press only)
+            if (isKeyPressed('restart') && !prevKeys.restart) {
+                gameState = initializeGame();
+            }
+            
+            // Update previous key states
+            Object.assign(prevKeys, keys);
+        }
+        
+        function updateGame() {
+            // Update game state
+            gameState = updateGameState(gameState);
+            
+            // Move alien formation every 48 frames (0.8 seconds at 60fps)
+            gameState.alienFormation.movementTimer++;
+            if (gameState.alienFormation.movementTimer >= gameState.alienFormation.baseMovementDelay) {
+                gameState.alienFormation = moveAliens(gameState.alienFormation);
+                gameState.alienFormation.movementTimer = 0;
+            }
+            
+            // Update player bullet
+            if (gameState.playerBullet && gameState.playerBullet.active) {
+                gameState.playerBullet.y -= gameState.playerBullet.speed;
+                
+                // Remove bullet if it goes off screen
+                if (gameState.playerBullet.y < 0) {
+                    gameState.playerBullet = null;
+                    gameState.player.canShoot = true;
+                }
+            } else if (!gameState.playerBullet) {
+                gameState.player.canShoot = true;
+            }
+            
+            // Update player invulnerability timer
+            if (gameState.player.invulnerable) {
+                gameState.player.invulnerableTimer--;
+                if (gameState.player.invulnerableTimer <= 0) {
+                    gameState.player.invulnerable = false;
+                }
+            }
+        }
+        
+        function render() {
+            // Clear canvas
+            clearCanvas();
+            
+            // Draw player with authentic sprite
+            if (!gameState.player.invulnerable || gameState.frameCount % 8 < 4) {
+                // Flashing effect when invulnerable
+                drawSprite(sprites.player, gameState.player.x, gameState.player.y, colors.player);
+            }
+            
+            // Draw alien formation
+            for (let row = 0; row < 5; row++) {
+                for (let col = 0; col < 11; col++) {
+                    const alien = gameState.alienFormation.aliens[row][col];
+                    if (alien && alien.alive) {
+                        // Use animated sprite for squids (bottom two rows)
+                        let spriteKey;
+                        if (alien.type === 'squid') {
+                            spriteKey = alien.animationFrame === 0 ? 'squid0' : 'squid1';
+                        } else {
+                            // Placeholder for crab and octopus - use squid sprite for now
+                            spriteKey = alien.animationFrame === 0 ? 'squid0' : 'squid1';
+                        }
+                        
+                        drawSprite(sprites[spriteKey], alien.x, alien.y, colors.alien);
+                    }
+                }
+            }
+            
+            // Draw shields as green rectangles (detailed sprites will be added later)
+            for (const shield of gameState.shields) {
+                if (shield.active) {
+                    // Simple green rectangle for now
+                    for (let y = 0; y < shield.height; y++) {
+                        for (let x = 0; x < shield.width; x++) {
+                            const pixelIndex = ((shield.y + y) * canvas.width + (shield.x + x)) * 4;
+                            if (pixelIndex >= 0 && pixelIndex < pixels.length) {
+                                pixels[pixelIndex] = colors.shield[0];
+                                pixels[pixelIndex + 1] = colors.shield[1];
+                                pixels[pixelIndex + 2] = colors.shield[2];
+                                pixels[pixelIndex + 3] = colors.shield[3];
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Draw player bullet
+            if (gameState.playerBullet && gameState.playerBullet.active) {
+                const bulletY = Math.floor(gameState.playerBullet.y);
+                const bulletX = Math.floor(gameState.playerBullet.x);
+                for (let y = 0; y < gameState.playerBullet.height; y++) {
+                    for (let x = 0; x < gameState.playerBullet.width; x++) {
+                        const pixelIndex = ((bulletY + y) * canvas.width + (bulletX + x)) * 4;
+                        if (pixelIndex >= 0 && pixelIndex < pixels.length) {
+                            pixels[pixelIndex] = colors.bullet[0];
+                            pixels[pixelIndex + 1] = colors.bullet[1];
+                            pixels[pixelIndex + 2] = colors.bullet[2];
+                            pixels[pixelIndex + 3] = colors.bullet[3];
+                        }
+                    }
+                }
+            }
+            
+            // Update canvas with pixel data
+            ctx.putImageData(imageData, 0, 0);
+            
+            // Update UI
+            document.getElementById('score').textContent = gameState.player.score;
+            document.getElementById('lives').textContent = gameState.player.lives;
+        }
+        
+        function gameLoop(currentTime) {
+            // Calculate delta time
+            const deltaTime = currentTime - lastTime;
+            lastTime = currentTime;
+            
+            // Fixed timestep game loop
+            accumulator += deltaTime;
+            
+            while (accumulator >= frameTime) {
+                updateInput();
+                updateGame();
+                accumulator -= frameTime;
+                gameState.frameCount++;
+            }
+            
+            // Render
+            render();
+            
+            // Continue loop
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Start game loop
+        console.log('Canvas initialized: 1600x1200 with pixel-perfect rendering');
+        console.log('Input system initialized: Arrow keys, Spacebar, R for restart');
+        console.log('Game loop starting...');
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
