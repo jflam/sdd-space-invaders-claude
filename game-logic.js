@@ -251,7 +251,7 @@ function moveAliens(formation) {
 class GameState {
   constructor() {
     this.state = 'playing'; // 'playing', 'game_over', 'level_complete'
-    this.player = new Player(224, 480); // Center bottom of 448x512 canvas
+    this.player = new Player(224, 450); // Center bottom with clearance above UI elements
     this.alienFormation = this._createAlienFormation();
     this.playerBullet = null; // Only one player bullet at a time
     this.alienBullets = []; // Array of alien bullets
