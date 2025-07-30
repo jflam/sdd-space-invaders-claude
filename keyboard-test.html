@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Keyboard Test Harness</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background-color: #222;
+            color: #00ff00;
+            font-family: monospace;
+            font-size: 16px;
+        }
+        #output {
+            background-color: #000;
+            border: 2px solid #00ff00;
+            padding: 20px;
+            height: 300px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+        #instructions {
+            margin-bottom: 20px;
+        }
+        .key-event {
+            margin: 5px 0;
+            padding: 5px;
+            background-color: #333;
+        }
+        .focus-indicator {
+            background-color: #004400;
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #00ff00;
+        }
+    </style>
+</head>
+<body>
+    <div class="focus-indicator" id="focusIndicator">
+        Page Focus Status: <span id="focusStatus">Unknown</span>
+    </div>
+    
+    <div id="instructions">
+        <h2>Keyboard Test Harness</h2>
+        <p>This page tests keyboard event detection for debugging Playwright key presses.</p>
+        <p><strong>Test Keys:</strong> Arrow keys, Space, R (restart), Any other keys</p>
+        <p><strong>Expected:</strong> All key presses should appear in the output below</p>
+    </div>
+    
+    <div id="output">
+        <div>🎮 Keyboard Test Ready - Press any keys to test...</div>
+    </div>
+    
+    <div id="gameState">
+        <h3>Simulated Game State:</h3>
+        <p>Player X: <span id="playerX">224</span></p>
+        <p>Last Key: <span id="lastKey">None</span></p>
+        <p>Key Count: <span id="keyCount">0</span></p>
+    </div>
+
+    <script>
+        const output = document.getElementById('output');
+        const focusStatus = document.getElementById('focusStatus');
+        const playerXSpan = document.getElementById('playerX');
+        const lastKeySpan = document.getElementById('lastKey');
+        const keyCountSpan = document.getElementById('keyCount');
+        
+        let playerX = 224;
+        let keyCount = 0;
+        
+        function log(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = 'key-event';
+            div.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
+            if (type === 'error') div.style.color = '#ff4444';
+            if (type === 'success') div.style.color = '#44ff44';
+            output.appendChild(div);
+            output.scrollTop = output.scrollHeight;
+        }
+        
+        function updateFocusStatus() {
+            const hasFocus = document.hasFocus();
+            focusStatus.textContent = hasFocus ? 'FOCUSED ✅' : 'NOT FOCUSED ❌';
+            focusStatus.style.color = hasFocus ? '#00ff00' : '#ff4444';
+        }
+        
+        // Focus monitoring
+        window.addEventListener('focus', () => {
+            updateFocusStatus();
+            log('🎯 Window gained focus', 'success');
+        });
+        
+        window.addEventListener('blur', () => {
+            updateFocusStatus();
+            log('⚠️ Window lost focus', 'error');
+        });
+        
+        // Comprehensive keyboard event handling
+        document.addEventListener('keydown', (e) => {
+            keyCount++;
+            const key = e.key;
+            const code = e.code;
+            
+            log(`⬇️ KEYDOWN: key="${key}" code="${code}" which=${e.which}`, 'info');
+            
+            // Simulate game controls
+            switch(key) {
+                case 'ArrowLeft':
+                    playerX = Math.max(0, playerX - 8);
+                    log(`🚀 Player moved LEFT to x=${playerX}`, 'success');
+                    break;
+                case 'ArrowRight':
+                    playerX = Math.min(440, playerX + 8);
+                    log(`🚀 Player moved RIGHT to x=${playerX}`, 'success');
+                    break;
+                case ' ':
+                    log(`🔫 Player SHOT fired!`, 'success');
+                    break;
+                case 'r':
+                case 'R':
+                    playerX = 224;
+                    log(`🔄 Game RESTARTED, player reset to x=${playerX}`, 'success');
+                    break;
+                default:
+                    log(`❓ Unknown key: "${key}"`, 'info');
+            }
+            
+            // Update UI
+            playerXSpan.textContent = playerX;
+            lastKeySpan.textContent = key;
+            keyCountSpan.textContent = keyCount;
+            
+            // Prevent default browser behavior
+            e.preventDefault();
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            log(`⬆️ KEYUP: key="${e.key}" code="${e.code}"`, 'info');
+        });
+        
+        // Initial setup
+        updateFocusStatus();
+        log('🚀 Keyboard test harness initialized');
+        log('📋 Waiting for keyboard input...');
+        
+        // Auto-focus the page
+        window.focus();
+        
+        // Monitor focus every second
+        setInterval(updateFocusStatus, 1000);
+    </script>
+</body>
+</html>

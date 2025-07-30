@@ -119,21 +119,44 @@ function checkBulletShieldCollision(bullet, shield) {
   if (bullet.x >= shield.x && bullet.x < shield.x + shield.width &&
       bullet.y >= shield.y && bullet.y < shield.y + shield.height) {
     
-    // Apply damage to shield at collision point - create 3x3 damage area
+    // Apply damage to shield at collision point - create explosion-shaped damage
     const centerX = Math.floor(bullet.x - shield.x);
     const centerY = Math.floor(bullet.y - shield.y);
     
-    // Create 3x3 damage area around impact point
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        const damageX = centerX + dx;
-        const damageY = centerY + dy;
-        
-        // Ensure damage coordinates are within bounds
-        if (damageX >= 0 && damageX < shield.width && 
-            damageY >= 0 && damageY < shield.height) {
-          shield.damageMap[damageX][damageY] = true;
-        }
+    // Create explosion-shaped damage pattern (based on original 1978 implementation)
+    // Pattern varies by bullet type - player bullets vs alien bullets
+    let damagePattern;
+    if (bullet.type === 'player') {
+      // Player bullets create smaller, more precise damage
+      damagePattern = [
+        [-1, -2], [0, -2], [1, -2],
+        [-2, -1], [-1, -1], [0, -1], [1, -1], [2, -1],
+        [-2, 0], [-1, 0], [0, 0], [1, 0], [2, 0],
+        [-2, 1], [-1, 1], [0, 1], [1, 1], [2, 1],
+        [-1, 2], [0, 2], [1, 2]
+      ];
+    } else {
+      // Alien bullets create larger, more destructive damage
+      damagePattern = [
+        [-1, -3], [0, -3], [1, -3],
+        [-2, -2], [-1, -2], [0, -2], [1, -2], [2, -2],
+        [-3, -1], [-2, -1], [-1, -1], [0, -1], [1, -1], [2, -1], [3, -1],
+        [-3, 0], [-2, 0], [-1, 0], [0, 0], [1, 0], [2, 0], [3, 0],
+        [-3, 1], [-2, 1], [-1, 1], [0, 1], [1, 1], [2, 1], [3, 1],
+        [-2, 2], [-1, 2], [0, 2], [1, 2], [2, 2],
+        [-1, 3], [0, 3], [1, 3]
+      ];
+    }
+    
+    // Apply damage pattern
+    for (const [dx, dy] of damagePattern) {
+      const damageX = centerX + dx;
+      const damageY = centerY + dy;
+      
+      // Ensure damage coordinates are within bounds
+      if (damageX >= 0 && damageX < shield.width && 
+          damageY >= 0 && damageY < shield.height) {
+        shield.damageMap[damageX][damageY] = true;
       }
     }
     

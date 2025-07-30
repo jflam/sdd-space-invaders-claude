@@ -93,6 +93,112 @@
         clearCanvas();
         ctx.putImageData(imageData, 0, 0);
         
+        // Web Audio API for authentic 1978 Space Invaders sound effects
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        
+        const sounds = {
+            // Player shot - short burst
+            playerShoot: () => {
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+                oscillator.frequency.exponentialRampToValueAtTime(200, audioContext.currentTime + 0.1);
+                
+                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.1);
+            },
+            
+            // Alien/UFO hit - explosion sound
+            alienHit: () => {
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                const filter = audioContext.createBiquadFilter();
+                
+                oscillator.connect(filter);
+                filter.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.type = 'sawtooth';
+                oscillator.frequency.setValueAtTime(220, audioContext.currentTime);
+                oscillator.frequency.exponentialRampToValueAtTime(55, audioContext.currentTime + 0.3);
+                
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(800, audioContext.currentTime);
+                filter.frequency.exponentialRampToValueAtTime(100, audioContext.currentTime + 0.3);
+                
+                gainNode.gain.setValueAtTime(0.4, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.3);
+            },
+            
+            // UFO warble (based on SN76477 chip)
+            ufoWarble: () => {
+                const oscillator = audioContext.createOscillator();
+                const lfo = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                const lfoGain = audioContext.createGain();
+                
+                lfo.connect(lfoGain);
+                lfoGain.connect(oscillator.frequency);
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                lfo.frequency.setValueAtTime(6, audioContext.currentTime); // 6Hz warble
+                lfoGain.gain.setValueAtTime(50, audioContext.currentTime); // Frequency modulation depth
+                
+                oscillator.frequency.setValueAtTime(400, audioContext.currentTime);
+                oscillator.type = 'sawtooth';
+                
+                gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+                gainNode.gain.setValueAtTime(0.2, audioContext.currentTime + 1.5);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 2.0);
+                
+                lfo.start(audioContext.currentTime);
+                oscillator.start(audioContext.currentTime);
+                lfo.stop(audioContext.currentTime + 2.0);
+                oscillator.stop(audioContext.currentTime + 2.0);
+            },
+            
+            // Player hit - harsh noise burst
+            playerHit: () => {
+                const bufferSize = audioContext.sampleRate * 0.5; // 0.5 seconds
+                const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+                const data = buffer.getChannelData(0);
+                
+                // Generate white noise
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = (Math.random() - 0.5) * 2;
+                }
+                
+                const source = audioContext.createBufferSource();
+                const gainNode = audioContext.createGain();
+                const filter = audioContext.createBiquadFilter();
+                
+                source.buffer = buffer;
+                source.connect(filter);
+                filter.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                filter.type = 'bandpass';
+                filter.frequency.setValueAtTime(1000, audioContext.currentTime);
+                filter.Q.setValueAtTime(10, audioContext.currentTime);
+                
+                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+                
+                source.start(audioContext.currentTime);
+            }
+        };
+        
         // Input handling system (T024)
         const keys = {
             left: false,
@@ -261,6 +367,13 @@
                     'player'
                 );
                 gameState.player.canShoot = false;
+                
+                // Play player shoot sound
+                try {
+                    sounds.playerShoot();
+                } catch (e) {
+                    console.log('Audio not supported');
+                }
             }
             
             // Handle restart (single press only)
@@ -331,6 +444,13 @@
                                 gameState.player.score = updateScore(gameState.player.score, alien.type);
                                 gameState.playerBullet.active = false;
                                 hit = true;
+                                
+                                // Play alien hit sound
+                                try {
+                                    sounds.alienHit();
+                                } catch (e) {
+                                    console.log('Audio not supported');
+                                }
                             }
                         }
                     }
@@ -368,6 +488,13 @@
                         gameState.player.invulnerable = true;
                         gameState.player.invulnerableTimer = 120; // 2 seconds of invulnerability
                         bullet.active = false;
+                        
+                        // Play player hit sound
+                        try {
+                            sounds.playerHit();
+                        } catch (e) {
+                            console.log('Audio not supported');
+                        }
                     }
                     
                     // Check collision with shields
