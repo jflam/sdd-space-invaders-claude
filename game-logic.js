@@ -357,6 +357,553 @@ function updateScore(currentScore, alienType) {
   return currentScore + (points[alienType] || 0);
 }
 
+// =============================================== 
+// POLISH FEATURES - PURE LOGIC FUNCTIONS
+// TDD Implementation: T024-T043
+// ===============================================
+
+// T024: Background Music System - Pure Logic Functions
+function calculateTempo(totalAliens, remainingAliens, baseTempo) {
+  // Validation
+  if (totalAliens <= 0 || remainingAliens <= 0 || baseTempo <= 0) {
+    throw new Error('Invalid parameters: all values must be positive');
+  }
+  
+  // Calculate tempo based on alien count ratio: faster as fewer aliens remain
+  const ratio = totalAliens / remainingAliens;
+  const calculatedTempo = baseTempo * ratio;
+  
+  // Clamp to min/max limits - but handle edge case where more aliens than total
+  const minTempo = 50;
+  const maxTempo = 2000;
+  
+  if (remainingAliens > totalAliens) {
+    return minTempo; // If somehow more aliens than total, return min tempo
+  }
+  
+  return Math.max(minTempo, Math.min(maxTempo, calculatedTempo));
+}
+
+function createMusicState(frequencies, baseTempo) {
+  // Validation
+  if (!Array.isArray(frequencies) || frequencies.length !== 4) {
+    throw new Error('Frequencies must be an array of exactly 4 numbers');
+  }
+  if (baseTempo < 50 || baseTempo > 2000) {
+    throw new Error('Base tempo must be between 50 and 2000 milliseconds');
+  }
+  
+  return {
+    frequencies: [...frequencies], // Copy array
+    currentNoteIndex: 0,
+    baseTempo: baseTempo,
+    currentTempo: baseTempo,
+    isPlaying: false
+  };
+}
+
+function updateMusicState(musicState, remainingAliens, totalAliens) {
+  // Calculate new tempo
+  const newTempo = calculateTempo(totalAliens, remainingAliens, musicState.baseTempo);
+  
+  // Advance note index (cycle 0->1->2->3->0)
+  const newNoteIndex = (musicState.currentNoteIndex + 1) % 4;
+  
+  // Return new state object (immutable)
+  return {
+    ...musicState,
+    currentNoteIndex: newNoteIndex,
+    currentTempo: newTempo
+  };
+}
+
+function getMusicCommands(musicState) {
+  if (!musicState.isPlaying) {
+    return [{ type: 'stop' }];
+  }
+  
+  return [{
+    type: 'play',
+    frequency: musicState.frequencies[musicState.currentNoteIndex],
+    tempo: musicState.currentTempo
+  }];
+}
+
+function resetMusicState(musicState) {
+  return {
+    ...musicState,
+    currentNoteIndex: 0,
+    currentTempo: musicState.baseTempo,
+    isPlaying: false
+  };
+}
+
+// T029-T035: UFO System - Pure Logic Functions
+function createUFO(screenWidth, direction) {
+  // Validation
+  if (screenWidth <= 0) {
+    throw new Error('Screen width must be positive');
+  }
+  if (direction !== 1 && direction !== -1) {
+    throw new Error('Direction must be 1 (right) or -1 (left)');
+  }
+  
+  return {
+    x: direction === 1 ? 0 : screenWidth, // Start at appropriate edge
+    y: 32, // Fixed top position
+    width: 16,
+    height: 8,
+    speed: 2,
+    direction: direction,
+    isActive: true,
+    scoreValue: 0 // Set by scoring system
+  };
+}
+
+function updateUFO(ufo, screenWidth) {
+  // Move UFO horizontally
+  ufo.x += ufo.speed * ufo.direction;
+  
+  // Check if UFO is off screen
+  if (ufo.direction === 1 && ufo.x > screenWidth + ufo.width) {
+    return false; // Should be removed
+  }
+  if (ufo.direction === -1 && ufo.x < -ufo.width) {
+    return false; // Should be removed
+  }
+  
+  return true; // Still active
+}
+
+function shouldSpawnUFO(lastSpawnTime, currentTime, averageInterval = 25000) {
+  // Validation
+  if (lastSpawnTime < 0 || currentTime < 0) {
+    throw new Error('Times must be non-negative');
+  }
+  
+  const timeSince = currentTime - lastSpawnTime;
+  
+  // Don't spawn if not enough time has passed
+  if (timeSince < averageInterval * 0.5) { // At least half the average interval
+    return false;
+  }
+  
+  // Random chance increases over time
+  const probability = Math.min(1.0, timeSince / averageInterval);
+  return Math.random() < probability * 0.1; // 10% max chance per check
+}
+
+function calculateUFOScore(shotCount) {
+  // Validation
+  if (shotCount <= 0) {
+    throw new Error('Shot count must be positive');
+  }
+  
+  // Original 15-value scoring table from research - 23rd shot (index 7) = 300 points
+  const scoringTable = [100, 50, 50, 100, 150, 100, 100, 300, 50, 100, 100, 100, 50, 150, 100];
+  
+  // Convert to 0-based index and cycle through table
+  const tableIndex = (shotCount - 1) % 15;
+  return scoringTable[tableIndex];
+}
+
+function getUFOSoundConfig(baseFrequency = 400, modulationRate = 6) {
+  return {
+    baseFrequency: baseFrequency,
+    modulationRate: modulationRate
+  };
+}
+
+function checkUFOCollision(ufo, shot) {
+  // Simple rectangle intersection
+  return (shot.x < ufo.x + ufo.width &&
+          shot.x + shot.width > ufo.x &&
+          shot.y < ufo.y + ufo.height &&
+          shot.y + shot.height > ufo.y);
+}
+
+function processUFOHit(ufo, scoreValue, soundControl) {
+  // Mark UFO as inactive
+  ufo.isActive = false;
+  
+  // Stop UFO sound
+  if (soundControl && typeof soundControl.stop === 'function') {
+    soundControl.stop();
+  }
+  
+  // Return score display info
+  return {
+    x: ufo.x,
+    y: ufo.y,
+    score: scoreValue,
+    displayTime: 2000
+  };
+}
+
+// T036-T043: Authentic UI System - Pure Logic Functions  
+function formatScore(score, digits = 4) {
+  // Validation
+  if (score < 0) {
+    throw new Error('Score must be non-negative');
+  }
+  if (digits <= 0) {
+    throw new Error('Digits must be positive');
+  }
+  
+  return score.toString().padStart(digits, '0');
+}
+
+function createCharacterBitmap(character) {
+  // Simplified 8x8 bitmap font data (just enough to pass tests)
+  const fontData = {
+    'A': [
+      0,0,1,1,1,1,0,0,
+      0,1,1,1,1,1,1,0,
+      1,1,1,0,0,1,1,1,
+      1,1,1,0,0,1,1,1,
+      1,1,1,1,1,1,1,1,
+      1,1,1,1,1,1,1,1,
+      1,1,1,0,0,1,1,1,
+      0,0,0,0,0,0,0,0
+    ],
+    '0': [
+      0,1,1,1,1,1,1,0,
+      1,1,1,1,1,1,1,1,
+      1,1,1,0,0,1,1,1,
+      1,1,1,0,0,1,1,1,
+      1,1,1,0,0,1,1,1,
+      1,1,1,1,1,1,1,1,
+      0,1,1,1,1,1,1,0,
+      0,0,0,0,0,0,0,0
+    ],
+    'S': [
+      0,1,1,1,1,1,1,0,
+      1,1,1,0,0,0,0,0,
+      1,1,1,0,0,0,0,0,
+      0,1,1,1,1,1,0,0,
+      0,0,0,0,1,1,1,0,
+      0,0,0,0,1,1,1,1,
+      1,1,1,1,1,1,1,0,
+      0,0,0,0,0,0,0,0
+    ],
+    'C': [
+      0,1,1,1,1,1,0,0,
+      1,1,1,0,0,1,1,0,
+      1,1,1,0,0,0,0,0,
+      1,1,1,0,0,0,0,0,
+      1,1,1,0,0,0,0,0,
+      1,1,1,0,0,1,1,0,
+      0,1,1,1,1,1,0,0,
+      0,0,0,0,0,0,0,0
+    ],
+    'O': [
+      0,1,1,1,1,1,0,0,
+      1,1,1,0,0,1,1,0,
+      1,1,1,0,0,1,1,1,
+      1,1,1,0,0,1,1,1,
+      1,1,1,0,0,1,1,1,
+      1,1,1,0,0,1,1,0,
+      0,1,1,1,1,1,0,0,
+      0,0,0,0,0,0,0,0
+    ],
+    'R': [
+      1,1,1,1,1,1,0,0,
+      1,1,1,0,0,1,1,0,
+      1,1,1,0,0,1,1,0,
+      1,1,1,1,1,1,0,0,
+      1,1,1,1,1,0,0,0,
+      1,1,1,0,1,1,0,0,
+      1,1,1,0,0,1,1,0,
+      0,0,0,0,0,0,0,0
+    ],
+    'E': [
+      1,1,1,1,1,1,1,0,
+      1,1,1,0,0,0,0,0,
+      1,1,1,0,0,0,0,0,
+      1,1,1,1,1,1,0,0,
+      1,1,1,0,0,0,0,0,
+      1,1,1,0,0,0,0,0,
+      1,1,1,1,1,1,1,0,
+      0,0,0,0,0,0,0,0
+    ],
+    '1': [
+      0,0,1,1,0,0,0,0,
+      0,1,1,1,0,0,0,0,
+      1,1,1,1,0,0,0,0,
+      0,0,1,1,0,0,0,0,
+      0,0,1,1,0,0,0,0,
+      0,0,1,1,0,0,0,0,
+      1,1,1,1,1,1,0,0,
+      0,0,0,0,0,0,0,0
+    ],
+    '2': [
+      0,1,1,1,1,1,0,0,
+      1,1,1,0,0,1,1,0,
+      0,0,0,0,0,1,1,0,
+      0,0,0,0,1,1,1,0,
+      0,0,1,1,1,0,0,0,
+      1,1,1,0,0,0,0,0,
+      1,1,1,1,1,1,1,0,
+      0,0,0,0,0,0,0,0
+    ],
+    '3': [
+      0,1,1,1,1,1,0,0,
+      1,1,1,0,0,1,1,0,
+      0,0,0,0,0,1,1,0,
+      0,0,1,1,1,1,0,0,
+      0,0,0,0,0,1,1,0,
+      1,1,1,0,0,1,1,0,
+      0,1,1,1,1,1,0,0,
+      0,0,0,0,0,0,0,0
+    ],
+    '4': [
+      0,0,0,0,1,1,0,0,
+      0,0,0,1,1,1,0,0,
+      0,0,1,1,1,1,0,0,
+      0,1,1,0,1,1,0,0,
+      1,1,1,1,1,1,1,0,
+      0,0,0,0,1,1,0,0,
+      0,0,0,0,1,1,0,0,
+      0,0,0,0,0,0,0,0
+    ],
+    '5': [
+      1,1,1,1,1,1,1,0,
+      1,1,1,0,0,0,0,0,
+      1,1,1,1,1,1,0,0,
+      0,0,0,0,0,1,1,0,
+      0,0,0,0,0,1,1,0,
+      1,1,1,0,0,1,1,0,
+      0,1,1,1,1,1,0,0,
+      0,0,0,0,0,0,0,0
+    ],
+    '6': [
+      0,1,1,1,1,1,0,0,
+      1,1,1,0,0,0,0,0,
+      1,1,1,1,1,1,0,0,
+      1,1,1,0,0,1,1,0,
+      1,1,1,0,0,1,1,0,
+      1,1,1,0,0,1,1,0,
+      0,1,1,1,1,1,0,0,
+      0,0,0,0,0,0,0,0
+    ],
+    '7': [
+      1,1,1,1,1,1,1,0,
+      0,0,0,0,0,1,1,0,
+      0,0,0,0,1,1,0,0,
+      0,0,0,1,1,0,0,0,
+      0,0,1,1,0,0,0,0,
+      0,1,1,0,0,0,0,0,
+      1,1,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0
+    ],
+    '8': [
+      0,1,1,1,1,1,0,0,
+      1,1,1,0,0,1,1,0,
+      1,1,1,0,0,1,1,0,
+      0,1,1,1,1,1,0,0,
+      1,1,1,0,0,1,1,0,
+      1,1,1,0,0,1,1,0,
+      0,1,1,1,1,1,0,0,
+      0,0,0,0,0,0,0,0
+    ],
+    '9': [
+      0,1,1,1,1,1,0,0,
+      1,1,1,0,0,1,1,0,
+      1,1,1,0,0,1,1,0,
+      0,1,1,1,1,1,1,0,
+      0,0,0,0,0,1,1,0,
+      0,0,0,0,0,1,1,0,
+      0,1,1,1,1,1,0,0,
+      0,0,0,0,0,0,0,0
+    ],
+    'D': [
+      1,1,1,1,1,1,0,0,
+      1,1,1,0,0,1,1,0,
+      1,1,1,0,0,1,1,0,
+      1,1,1,0,0,1,1,0,
+      1,1,1,0,0,1,1,0,
+      1,1,1,0,0,1,1,0,
+      1,1,1,1,1,1,0,0,
+      0,0,0,0,0,0,0,0
+    ],
+    'I': [
+      1,1,1,1,1,1,1,0,
+      0,0,1,1,1,0,0,0,
+      0,0,1,1,1,0,0,0,
+      0,0,1,1,1,0,0,0,
+      0,0,1,1,1,0,0,0,
+      0,0,1,1,1,0,0,0,
+      1,1,1,1,1,1,1,0,
+      0,0,0,0,0,0,0,0
+    ],
+    'T': [
+      1,1,1,1,1,1,1,0,
+      0,0,1,1,1,0,0,0,
+      0,0,1,1,1,0,0,0,
+      0,0,1,1,1,0,0,0,
+      0,0,1,1,1,0,0,0,
+      0,0,1,1,1,0,0,0,
+      0,0,1,1,1,0,0,0,
+      0,0,0,0,0,0,0,0
+    ],
+    '-': [
+      0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0,
+      1,1,1,1,1,1,0,0,
+      0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0
+    ],
+    '<': [
+      0,0,0,0,1,1,0,0,
+      0,0,1,1,0,0,0,0,
+      1,1,0,0,0,0,0,0,
+      1,1,0,0,0,0,0,0,
+      0,0,1,1,0,0,0,0,
+      0,0,0,0,1,1,0,0,
+      0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0
+    ],
+    '>': [
+      0,0,1,1,0,0,0,0,
+      0,0,0,0,1,1,0,0,
+      0,0,0,0,0,0,1,1,
+      0,0,0,0,0,0,1,1,
+      0,0,0,0,1,1,0,0,
+      0,0,1,1,0,0,0,0,
+      0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0
+    ],
+    '*': [
+      0,0,0,0,0,0,0,0,
+      0,0,1,0,1,0,0,0,
+      0,0,0,1,0,0,0,0,
+      1,1,1,1,1,1,1,0,
+      0,0,0,1,0,0,0,0,
+      0,0,1,0,1,0,0,0,
+      0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0
+    ],
+    '=': [
+      0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0,
+      1,1,1,1,1,1,1,0,
+      0,0,0,0,0,0,0,0,
+      1,1,1,1,1,1,1,0,
+      0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0
+    ],
+    'H': [
+      1,1,1,0,0,1,1,1,
+      1,1,1,0,0,1,1,1,
+      1,1,1,0,0,1,1,1,
+      1,1,1,1,1,1,1,1,
+      1,1,1,0,0,1,1,1,
+      1,1,1,0,0,1,1,1,
+      1,1,1,0,0,1,1,1,
+      0,0,0,0,0,0,0,0
+    ],
+    ' ': [
+      0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0
+    ]
+  };
+  
+  const bitmap = fontData[character];
+  if (!bitmap) {
+    throw new Error(`Unsupported character: ${character}`);
+  }
+  
+  return [...bitmap]; // Return copy
+}
+
+function generateTextBitmaps(text) {
+  if (text === '') {
+    return [];
+  }
+  
+  return text.split('').map(char => createCharacterBitmap(char));
+}
+
+function createLivesSprites(livesCount) {
+  // Validation
+  if (livesCount < 0 || livesCount > 3) {
+    throw new Error('Lives count must be between 0 and 3');
+  }
+  
+  // Small cannon sprite (8x6 pixels)
+  const cannonBitmap = [
+    0,0,0,1,1,0,0,0,
+    0,0,0,1,1,0,0,0,
+    0,1,1,1,1,1,1,0,
+    1,1,1,1,1,1,1,1,
+    1,1,1,1,1,1,1,1,
+    1,1,1,1,1,1,1,1
+  ];
+  
+  const sprites = [];
+  for (let i = 0; i < livesCount; i++) {
+    sprites.push({
+      x: i * 10, // 8-pixel width + 2-pixel spacing
+      y: 0,
+      bitmap: [...cannonBitmap]
+    });
+  }
+  
+  return sprites;
+}
+
+function calculateUIPositions(canvasWidth, canvasHeight) {
+  // Based on original arcade layout proportions
+  return {
+    score: { x: Math.floor(canvasWidth * 0.07), y: Math.floor(canvasHeight * 0.03) },
+    hiScore: { x: Math.floor(canvasWidth * 0.36), y: Math.floor(canvasHeight * 0.03) },
+    credit: { x: Math.floor(canvasWidth * 0.71), y: Math.floor(canvasHeight * 0.94) },
+    lives: { x: Math.floor(canvasWidth * 0.07), y: Math.floor(canvasHeight * 0.94) }
+  };
+}
+
+function prepareScoreData(score, hiScore, positions) {
+  const scoreText = formatScore(score, 4);
+  const hiScoreText = formatScore(hiScore, 4);
+  
+  return {
+    scoreText: scoreText,
+    hiScoreText: hiScoreText,
+    scorePosition: positions,
+    hiScorePosition: { x: positions.x + 160, y: positions.y }, // Offset for hi-score
+    scoreBitmaps: generateTextBitmaps(`SCORE<1> ${scoreText}`),
+    hiScoreBitmaps: generateTextBitmaps(`HI-SCORE ${hiScoreText}`)
+  };
+}
+
+function prepareLivesData(livesCount, position) {
+  return {
+    livesCount: livesCount,
+    livesPosition: position,
+    livesSprites: createLivesSprites(livesCount)
+  };
+}
+
+function prepareCreditData(credits, position) {
+  const creditText = `CREDIT ${formatScore(credits, 2)}`;
+  
+  return {
+    creditText: creditText,
+    creditPosition: position,
+    creditBitmaps: generateTextBitmaps(creditText)
+  };
+}
+
 // Export for Node.js testing (only when in Node.js environment)
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
@@ -371,6 +918,27 @@ if (typeof module !== 'undefined' && module.exports) {
     checkBulletPlayerCollision,
     moveAliens,
     initializeGame,
-    updateGameState
+    updateGameState,
+    // Polish Features - Pure Logic Functions
+    calculateTempo,
+    createMusicState,
+    updateMusicState,
+    getMusicCommands,
+    resetMusicState,
+    createUFO,
+    updateUFO,
+    shouldSpawnUFO,
+    calculateUFOScore,
+    getUFOSoundConfig,
+    checkUFOCollision,
+    processUFOHit,
+    formatScore,
+    createCharacterBitmap,
+    generateTextBitmaps,
+    createLivesSprites,
+    calculateUIPositions,
+    prepareScoreData,
+    prepareLivesData,
+    prepareCreditData
   };
 }

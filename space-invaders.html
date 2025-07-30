@@ -199,6 +199,51 @@
             }
         };
         
+        // Background Music System - Web Audio API Interpreter (T045)
+        let currentMusicOscillator = null;
+        let currentMusicGain = null;
+        
+        function interpretMusicCommands(commands) {
+            commands.forEach(command => {
+                if (command.type === 'play') {
+                    // Stop any currently playing music note
+                    if (currentMusicOscillator) {
+                        currentMusicGain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.05);
+                        currentMusicOscillator.stop(audioContext.currentTime + 0.1);
+                    }
+                    
+                    // Create new oscillator for the bass note
+                    currentMusicOscillator = audioContext.createOscillator();
+                    currentMusicGain = audioContext.createGain();
+                    
+                    // Connect audio nodes
+                    currentMusicOscillator.connect(currentMusicGain);
+                    currentMusicGain.connect(audioContext.destination);
+                    
+                    // Configure bass note sound
+                    currentMusicOscillator.type = 'square'; // Classic arcade bass sound
+                    currentMusicOscillator.frequency.setValueAtTime(command.frequency, audioContext.currentTime);
+                    
+                    // Set volume and envelope
+                    currentMusicGain.gain.setValueAtTime(0.15, audioContext.currentTime); // Lower volume for background
+                    currentMusicGain.gain.exponentialRampToValueAtTime(0.05, audioContext.currentTime + (command.tempo / 1000) * 0.8);
+                    
+                    // Start playing
+                    currentMusicOscillator.start(audioContext.currentTime);
+                    currentMusicOscillator.stop(audioContext.currentTime + (command.tempo / 1000));
+                    
+                } else if (command.type === 'stop') {
+                    // Stop music
+                    if (currentMusicOscillator) {
+                        currentMusicGain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.05);
+                        currentMusicOscillator.stop(audioContext.currentTime + 0.1);
+                        currentMusicOscillator = null;
+                        currentMusicGain = null;
+                    }
+                }
+            });
+        }
+        
         // Input handling system (T024)
         const keys = {
             left: false,
@@ -313,6 +358,7 @@
             alien: [255, 255, 255, 255],   // White
             bullet: [255, 255, 0, 255],    // Yellow
             shield: [0, 255, 0, 255],      // Green
+            text: [255, 255, 255, 255],    // White text for UI
             background: [0, 0, 0, 255]     // Black
         };
         
@@ -338,8 +384,51 @@
             }
         }
         
+        // Text rendering function for 8x8 bitmap font (T056)
+        function drawText(text, x, y, color) {
+            const textBitmaps = generateTextBitmaps(text);
+            let charX = x;
+            
+            for (const charBitmap of textBitmaps) {
+                // Draw each character as 8x8 bitmap
+                for (let row = 0; row < 8; row++) {
+                    for (let col = 0; col < 8; col++) {
+                        if (charBitmap[row * 8 + col] === 1) {
+                            const pixelX = Math.floor(charX + col);
+                            const pixelY = Math.floor(y + row);
+                            
+                            // Bounds check
+                            if (pixelX >= 0 && pixelX < canvas.width && 
+                                pixelY >= 0 && pixelY < canvas.height) {
+                                const pixelIndex = (pixelY * canvas.width + pixelX) * 4;
+                                pixels[pixelIndex] = color[0];     // Red
+                                pixels[pixelIndex + 1] = color[1]; // Green
+                                pixels[pixelIndex + 2] = color[2]; // Blue
+                                pixels[pixelIndex + 3] = color[3]; // Alpha
+                            }
+                        }
+                    }
+                }
+                charX += 8; // Move to next character position (8 pixels wide)
+            }
+        }
+        
         // Game loop implementation (T025)
         let gameState = initializeGame();
+        
+        // Initialize music state (T044)
+        const bassFrequencies = [130, 116, 98, 87]; // Four descending bass notes from research.md
+        let musicState = createMusicState(bassFrequencies, 500); // Base tempo 500ms
+        musicState.isPlaying = true; // Start music when game starts
+        let lastMusicTime = 0;
+        
+        // Initialize UFO state (T048)
+        let currentUFO = null;
+        let lastUFOSpawnTime = 0;
+        let totalShotsFired = 0; // Track total shots for UFO scoring algorithm
+        let ufoScoreDisplay = null; // For showing UFO score when hit
+        let currentUFOSound = null; // Track UFO sound oscillator
+        
         let lastTime = 0;
         const targetFPS = 60;
         const frameTime = 1000 / targetFPS; // 16.67ms per frame
@@ -359,6 +448,9 @@
             
             // Handle shooting (single press only)
             if (isKeyPressed('shoot') && !prevKeys.shoot && gameState.player.canShoot) {
+                // Increment total shots fired for UFO scoring (T049)
+                totalShotsFired++;
+                
                 // Create player bullet
                 gameState.playerBullet = new Bullet(
                     gameState.player.x + gameState.player.width / 2 - 1, // Center bullet
@@ -379,6 +471,19 @@
             // Handle restart (single press only)
             if (isKeyPressed('restart') && !prevKeys.restart) {
                 gameState = initializeGame();
+                // Reset music state on restart
+                musicState = resetMusicState(musicState);
+                musicState.isPlaying = true;
+                lastMusicTime = 0;
+                // Reset UFO state on restart
+                currentUFO = null;
+                lastUFOSpawnTime = 0;
+                totalShotsFired = 0;
+                ufoScoreDisplay = null;
+                if (currentUFOSound) {
+                    currentUFOSound.stop();
+                    currentUFOSound = null;
+                }
             }
             
             // Update previous key states
@@ -388,6 +493,57 @@
         function updateGame() {
             // Update game state
             gameState = updateGameState(gameState);
+            
+            // Handle background music timing (T046, T047)
+            const currentTime = Date.now();
+            if (currentTime - lastMusicTime >= musicState.currentTempo) {
+                // Time to play next music note
+                const commands = getMusicCommands(musicState);
+                if (commands.length > 0) {
+                    try {
+                        interpretMusicCommands(commands);
+                        musicState = updateMusicState(musicState, gameState.alienFormation.aliveCount, 55);
+                        lastMusicTime = currentTime;
+                    } catch (e) {
+                        console.log('Music audio not supported:', e);
+                    }
+                }
+            }
+            
+            // UFO spawning logic (T049)
+            const currentGameTime = Date.now();
+            if (!currentUFO && shouldSpawnUFO(lastUFOSpawnTime, currentGameTime)) {
+                // Randomly choose direction (left-to-right or right-to-left)
+                const direction = Math.random() < 0.5 ? 1 : -1;
+                currentUFO = createUFO(canvas.width, direction);
+                currentUFO.scoreValue = calculateUFOScore(totalShotsFired + 1); // Pre-calculate score
+                lastUFOSpawnTime = currentGameTime;
+                
+                // Start UFO sound
+                const ufoSoundConfig = getUFOSoundConfig();
+                try {
+                    // Create UFO warble sound using our existing sound system
+                    sounds.ufoWarble();
+                } catch (e) {
+                    console.log('UFO audio not supported:', e);
+                }
+            }
+            
+            // Update UFO movement
+            if (currentUFO && currentUFO.isActive) {
+                const stillActive = updateUFO(currentUFO, canvas.width);
+                if (!stillActive) {
+                    currentUFO = null; // Remove UFO when it goes off screen
+                }
+            }
+            
+            // Update UFO score display timeout
+            if (ufoScoreDisplay) {
+                const elapsed = Date.now() - ufoScoreDisplay.startTime;
+                if (elapsed >= ufoScoreDisplay.timeRemaining) {
+                    ufoScoreDisplay = null; // Remove score display
+                }
+            }
             
             // Move alien formation every 48 frames (0.8 seconds at 60fps)
             gameState.alienFormation.movementTimer++;
@@ -445,6 +601,9 @@
                                 gameState.playerBullet.active = false;
                                 hit = true;
                                 
+                                // Update music tempo based on remaining aliens (T044)
+                                musicState = updateMusicState(musicState, gameState.alienFormation.aliveCount, 55);
+                                
                                 // Play alien hit sound
                                 try {
                                     sounds.alienHit();
@@ -452,6 +611,37 @@
                                     console.log('Audio not supported');
                                 }
                             }
+                        }
+                    }
+                }
+                
+                // Check for UFO collision (T050)
+                if (!hit && currentUFO && currentUFO.isActive) {
+                    if (checkUFOCollision(currentUFO, gameState.playerBullet)) {
+                        // UFO hit! (T052)
+                        const scoreResult = processUFOHit(currentUFO, currentUFO.scoreValue, currentUFOSound);
+                        gameState.player.score += scoreResult.score;
+                        gameState.playerBullet.active = false;
+                        hit = true;
+                        
+                        // Set up score display
+                        ufoScoreDisplay = {
+                            x: scoreResult.x,
+                            y: scoreResult.y,
+                            score: scoreResult.score,
+                            timeRemaining: scoreResult.displayTime,
+                            startTime: Date.now()
+                        };
+                        
+                        // Remove UFO
+                        currentUFO = null;
+                        currentUFOSound = null;
+                        
+                        // Play UFO hit sound (reuse alien hit sound)
+                        try {
+                            sounds.alienHit();
+                        } catch (e) {
+                            console.log('UFO hit audio not supported:', e);
                         }
                     }
                 }
@@ -609,12 +799,62 @@
                 }
             }
             
+            // Draw UFO if active
+            if (currentUFO && currentUFO.isActive) {
+                // Simple rectangle for UFO (we could add a proper sprite later)
+                for (let y = 0; y < currentUFO.height; y++) {
+                    for (let x = 0; x < currentUFO.width; x++) {
+                        const pixelX = Math.floor(currentUFO.x + x);
+                        const pixelY = Math.floor(currentUFO.y + y);
+                        if (pixelX >= 0 && pixelX < canvas.width && 
+                            pixelY >= 0 && pixelY < canvas.height) {
+                            const pixelIndex = (pixelY * canvas.width + pixelX) * 4;
+                            pixels[pixelIndex] = 255;     // Red UFO
+                            pixels[pixelIndex + 1] = 100; // Green
+                            pixels[pixelIndex + 2] = 100; // Blue
+                            pixels[pixelIndex + 3] = 255; // Alpha
+                        }
+                    }
+                }
+            }
+            
+            // Draw UFO score display if active
+            if (ufoScoreDisplay) {
+                drawText(ufoScoreDisplay.score.toString(), ufoScoreDisplay.x, ufoScoreDisplay.y, colors.text);
+            }
+            
+            // Render authentic UI using bitmap font (T053, T054, T055)
+            const uiPositions = calculateUIPositions(canvas.width, canvas.height);
+            
+            // Draw score and hi-score (T053)
+            const scoreData = prepareScoreData(gameState.player.score, gameState.player.score, uiPositions.score);
+            drawText(`SCORE<1> ${scoreData.scoreText}`, uiPositions.score.x, uiPositions.score.y, colors.text);
+            drawText(`HI-SCORE ${scoreData.hiScoreText}`, uiPositions.hiScore.x, uiPositions.hiScore.y, colors.text);
+            
+            // Draw lives display (T054)
+            const livesData = prepareLivesData(gameState.player.lives, uiPositions.lives);
+            drawText(`${livesData.livesCount}`, uiPositions.lives.x, uiPositions.lives.y, colors.text);
+            // Draw small cannon sprites for remaining lives
+            let livesX = uiPositions.lives.x + 16; // Offset from the number
+            for (const lifeSprite of livesData.livesSprites) {
+                // Convert flat bitmap to 2D array for drawSprite (8x6 pixels)
+                const sprite2D = [];
+                for (let row = 0; row < 6; row++) {
+                    sprite2D[row] = [];
+                    for (let col = 0; col < 8; col++) {
+                        sprite2D[row][col] = lifeSprite.bitmap[row * 8 + col];
+                    }
+                }
+                drawSprite(sprite2D, livesX + lifeSprite.x, uiPositions.lives.y + lifeSprite.y, colors.player);
+                livesX += 12; // Spacing between life sprites
+            }
+            
+            // Draw credit display (T055)
+            const creditData = prepareCreditData(1, uiPositions.credit); // Default 1 credit
+            drawText(creditData.creditText, uiPositions.credit.x, uiPositions.credit.y, colors.text);
+            
             // Update canvas with pixel data
             ctx.putImageData(imageData, 0, 0);
-            
-            // Update UI
-            document.getElementById('score').textContent = gameState.player.score;
-            document.getElementById('lives').textContent = gameState.player.lives;
         }
         
         function gameLoop(currentTime) {
