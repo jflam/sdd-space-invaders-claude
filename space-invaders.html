@@ -50,7 +50,7 @@
         <div>LEVEL: <span id="level">1</span></div>
     </div>
     
-    <canvas id="gameCanvas" width="1600" height="1200"></canvas>
+    <canvas id="gameCanvas" width="448" height="512"></canvas>
     
     <div id="instructions">
         <div>← → ARROW KEYS TO MOVE</div>
@@ -71,8 +71,8 @@
         ctx.msImageSmoothingEnabled = false;
         
         // Set canvas dimensions (2x scaled from original 224x256)
-        canvas.width = 1600;
-        canvas.height = 1200;
+        canvas.width = 448;
+        canvas.height = 512;
         
         // Create ImageData buffer for pixel manipulation
         const imageData = ctx.createImageData(canvas.width, canvas.height);
@@ -283,17 +283,107 @@
                 gameState.alienFormation.movementTimer = 0;
             }
             
+            // Alien shooting logic - shoot randomly every ~180 frames (3 seconds)
+            if (gameState.frameCount - gameState.lastAlienShot > 180 && Math.random() < 0.02) {
+                // Find all alive aliens in bottom row of formation
+                const shootingCandidates = [];
+                for (let col = 0; col < 11; col++) {
+                    for (let row = 4; row >= 0; row--) { // Start from bottom row
+                        const alien = gameState.alienFormation.aliens[row][col];
+                        if (alien && alien.alive) {
+                            shootingCandidates.push(alien);
+                            break; // Only the bottom-most alien in each column can shoot
+                        }
+                    }
+                }
+                
+                if (shootingCandidates.length > 0) {
+                    // Pick random shooting alien
+                    const shooter = shootingCandidates[Math.floor(Math.random() * shootingCandidates.length)];
+                    
+                    // Create alien bullet
+                    const alienBullet = new Bullet(
+                        shooter.x + shooter.width / 2 - 1, // Center bullet
+                        shooter.y + shooter.height,
+                        -4, // Negative speed = downward
+                        'alien'
+                    );
+                    
+                    gameState.alienBullets.push(alienBullet);
+                    gameState.lastAlienShot = gameState.frameCount;
+                }
+            }
+            
             // Update player bullet
             if (gameState.playerBullet && gameState.playerBullet.active) {
                 gameState.playerBullet.y -= gameState.playerBullet.speed;
                 
-                // Remove bullet if it goes off screen
-                if (gameState.playerBullet.y < 0) {
+                // Check collision with aliens
+                let hit = false;
+                for (let row = 0; row < 5 && !hit; row++) {
+                    for (let col = 0; col < 11 && !hit; col++) {
+                        const alien = gameState.alienFormation.aliens[row][col];
+                        if (alien && alien.alive) {
+                            if (checkBulletAlienCollision(gameState.playerBullet, alien)) {
+                                // Alien hit!
+                                alien.alive = false;
+                                gameState.alienFormation.aliveCount--;
+                                gameState.player.score = updateScore(gameState.player.score, alien.type);
+                                gameState.playerBullet.active = false;
+                                hit = true;
+                            }
+                        }
+                    }
+                }
+                
+                // Check collision with shields
+                if (!hit) {
+                    for (const shield of gameState.shields) {
+                        if (checkBulletShieldCollision(gameState.playerBullet, shield)) {
+                            hit = true;
+                            break;
+                        }
+                    }
+                }
+                
+                // Remove bullet if it goes off screen or hit something
+                if (gameState.playerBullet.y < 0 || !gameState.playerBullet.active) {
                     gameState.playerBullet = null;
                     gameState.player.canShoot = true;
                 }
             } else if (!gameState.playerBullet) {
                 gameState.player.canShoot = true;
+            }
+            
+            // Update alien bullets
+            for (let i = gameState.alienBullets.length - 1; i >= 0; i--) {
+                const bullet = gameState.alienBullets[i];
+                if (bullet.active) {
+                    bullet.y -= bullet.speed; // Negative speed moves downward
+                    
+                    // Check collision with player
+                    if (checkBulletPlayerCollision(bullet, gameState.player)) {
+                        // Player hit!
+                        gameState.player.lives--;
+                        gameState.player.invulnerable = true;
+                        gameState.player.invulnerableTimer = 120; // 2 seconds of invulnerability
+                        bullet.active = false;
+                    }
+                    
+                    // Check collision with shields
+                    for (const shield of gameState.shields) {
+                        if (checkBulletShieldCollision(bullet, shield)) {
+                            break; // Bullet destroyed by shield collision
+                        }
+                    }
+                    
+                    // Remove bullet if it goes off screen or is inactive
+                    if (bullet.y > canvas.height || !bullet.active) {
+                        gameState.alienBullets.splice(i, 1);
+                    }
+                } else {
+                    gameState.alienBullets.splice(i, 1);
+                }
             }
             
             // Update player invulnerability timer
@@ -334,18 +424,21 @@
                 }
             }
             
-            // Draw shields as green rectangles (detailed sprites will be added later)
+            // Draw shields with damage visualization
             for (const shield of gameState.shields) {
                 if (shield.active) {
-                    // Simple green rectangle for now
+                    // Draw shield pixels, skipping damaged ones
                     for (let y = 0; y < shield.height; y++) {
                         for (let x = 0; x < shield.width; x++) {
-                            const pixelIndex = ((shield.y + y) * canvas.width + (shield.x + x)) * 4;
-                            if (pixelIndex >= 0 && pixelIndex < pixels.length) {
-                                pixels[pixelIndex] = colors.shield[0];
-                                pixels[pixelIndex + 1] = colors.shield[1];
-                                pixels[pixelIndex + 2] = colors.shield[2];
-                                pixels[pixelIndex + 3] = colors.shield[3];
+                            // Only draw pixel if not damaged
+                            if (!shield.damageMap[x][y]) {
+                                const pixelIndex = ((shield.y + y) * canvas.width + (shield.x + x)) * 4;
+                                if (pixelIndex >= 0 && pixelIndex < pixels.length) {
+                                    pixels[pixelIndex] = colors.shield[0];
+                                    pixels[pixelIndex + 1] = colors.shield[1];
+                                    pixels[pixelIndex + 2] = colors.shield[2];
+                                    pixels[pixelIndex + 3] = colors.shield[3];
+                                }
                             }
                         }
                     }
@@ -364,6 +457,26 @@
                             pixels[pixelIndex + 1] = colors.bullet[1];
                             pixels[pixelIndex + 2] = colors.bullet[2];
                             pixels[pixelIndex + 3] = colors.bullet[3];
+                        }
+                    }
+                }
+            }
+            
+            // Draw alien bullets
+            for (const bullet of gameState.alienBullets) {
+                if (bullet.active) {
+                    const bulletY = Math.floor(bullet.y);
+                    const bulletX = Math.floor(bullet.x);
+                    for (let y = 0; y < bullet.height; y++) {
+                        for (let x = 0; x < bullet.width; x++) {
+                            const pixelIndex = ((bulletY + y) * canvas.width + (bulletX + x)) * 4;
+                            if (pixelIndex >= 0 && pixelIndex < pixels.length) {
+                                // Alien bullets are red to distinguish from player bullets
+                                pixels[pixelIndex] = 255;     // Red
+                                pixels[pixelIndex + 1] = 0;   // Green
+                                pixels[pixelIndex + 2] = 0;   // Blue
+                                pixels[pixelIndex + 3] = 255; // Alpha
+                            }
                         }
                     }
                 }
@@ -400,7 +513,7 @@
         }
         
         // Start game loop
-        console.log('Canvas initialized: 1600x1200 with pixel-perfect rendering');
+        console.log('Canvas initialized: 448x512 with pixel-perfect rendering');
         console.log('Input system initialized: Arrow keys, Spacebar, R for restart');
         console.log('Game loop starting...');
         requestAnimationFrame(gameLoop);

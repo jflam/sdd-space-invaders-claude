@@ -119,16 +119,25 @@ function checkBulletShieldCollision(bullet, shield) {
   if (bullet.x >= shield.x && bullet.x < shield.x + shield.width &&
       bullet.y >= shield.y && bullet.y < shield.y + shield.height) {
     
-    // Apply damage to shield at collision point
-    const damageX = Math.floor(bullet.x - shield.x);
-    const damageY = Math.floor(bullet.y - shield.y);
+    // Apply damage to shield at collision point - create 3x3 damage area
+    const centerX = Math.floor(bullet.x - shield.x);
+    const centerY = Math.floor(bullet.y - shield.y);
     
-    // Ensure damage coordinates are within bounds
-    if (damageX >= 0 && damageX < shield.width && 
-        damageY >= 0 && damageY < shield.height) {
-      shield.damageMap[damageX][damageY] = true;
-      shield._updateActiveStatus(); // Update shield active status after damage
+    // Create 3x3 damage area around impact point
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const damageX = centerX + dx;
+        const damageY = centerY + dy;
+        
+        // Ensure damage coordinates are within bounds
+        if (damageX >= 0 && damageX < shield.width && 
+            damageY >= 0 && damageY < shield.height) {
+          shield.damageMap[damageX][damageY] = true;
+        }
+      }
     }
+    
+    shield._updateActiveStatus(); // Update shield active status after damage
     
     bullet.active = false; // Bullet is destroyed on impact
     return true;
@@ -152,15 +161,17 @@ function checkBulletPlayerCollision(bullet, player) {
 // Movement calculation functions
 
 function moveAliens(formation) {
-  const canvasWidth = 1600; // 2x scaled canvas width
-  const edgeBuffer = 40;    // Margin from screen edge
+  const canvasWidth = 448; // 2x scaled canvas width  
+  const edgeBuffer = 20;    // Margin from screen edge
   
   // Create a copy to avoid mutation
   const newFormation = {
     aliens: formation.aliens.map(row => row.map(alien => alien ? {...alien} : null)),
     direction: formation.direction,
     speed: formation.speed,
-    aliveCount: formation.aliveCount
+    aliveCount: formation.aliveCount,
+    movementTimer: formation.movementTimer,
+    baseMovementDelay: formation.baseMovementDelay
   };
   
   // Find the leftmost and rightmost alive aliens
@@ -217,7 +228,7 @@ function moveAliens(formation) {
 class GameState {
   constructor() {
     this.state = 'playing'; // 'playing', 'game_over', 'level_complete'
-    this.player = new Player(800, 1150); // Center bottom of 1600x1200 canvas
+    this.player = new Player(224, 480); // Center bottom of 448x512 canvas
     this.alienFormation = this._createAlienFormation();
     this.playerBullet = null; // Only one player bullet at a time
     this.alienBullets = []; // Array of alien bullets
@@ -242,8 +253,8 @@ class GameState {
         // Bottom 2 rows: squid (10 points)
         else alienType = 'squid';
         
-        const x = col * 60 + 200; // Space aliens out horizontally
-        const y = row * 50 + 100;  // Space aliens out vertically
+        const x = col * 30 + 50; // Space aliens out horizontally for 448px width
+        const y = row * 32 + 50;  // Space aliens out vertically
         
         aliens[row][col] = new Alien(x, y, alienType);
         aliveCount++;
@@ -262,9 +273,9 @@ class GameState {
   
   _createShields() {
     const shields = [];
-    const shieldSpacing = 300; // Space shields evenly
-    const startX = 250;
-    const shieldY = 900; // Position between aliens and player
+    const shieldSpacing = 90; // Space shields evenly for 448px width
+    const startX = 50;
+    const shieldY = 400; // Position between aliens and player
     
     for (let i = 0; i < 4; i++) {
       shields.push(new Shield(startX + i * shieldSpacing, shieldY));

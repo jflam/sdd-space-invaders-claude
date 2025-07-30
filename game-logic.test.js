@@ -148,7 +148,8 @@ describe('T008: Alien Movement Calculation Tests', () => {
     for (let row = 0; row < 5; row++) {
       aliens[row] = [];
       for (let col = 0; col < 11; col++) {
-        aliens[row][col] = new Alien(col * 40 + 100, row * 32 + 100, 'squid');
+        // Position aliens safely away from edges for 448px canvas
+        aliens[row][col] = new Alien(col * 20 + 50, row * 32 + 50, 'squid');
       }
     }
     
@@ -160,7 +161,7 @@ describe('T008: Alien Movement Calculation Tests', () => {
     };
 
     const moved = moveAliens(formation);
-    expect(moved.aliens[0][0].x).toBe(104); // Moved 4 pixels right
+    expect(moved.aliens[0][0].x).toBe(54); // Moved 4 pixels right (50 + 4)
   });
 
   test('alien formation reverses direction at screen edges', () => {
@@ -168,7 +169,7 @@ describe('T008: Alien Movement Calculation Tests', () => {
     for (let row = 0; row < 5; row++) {
       aliens[row] = [];
       for (let col = 0; col < 11; col++) {
-        aliens[row][col] = new Alien(1580, row * 32 + 100, 'squid'); // Near right edge
+        aliens[row][col] = new Alien(420, row * 32 + 50, 'squid'); // Near right edge for 448px canvas
       }
     }
 
@@ -181,7 +182,7 @@ describe('T008: Alien Movement Calculation Tests', () => {
 
     const moved = moveAliens(formation);
     expect(moved.direction).toBe(-1); // Direction reversed
-    expect(moved.aliens[0][0].y).toBe(116); // Dropped down 16 pixels
+    expect(moved.aliens[0][0].y).toBe(66); // Dropped down 16 pixels (50 + 16)
   });
 });
 
@@ -283,6 +284,92 @@ describe('T011: Alien Formation Behavior Integration Tests', () => {
     
     const moved = moveAliens(formation);
     expect(moved.speed).toBeGreaterThan(originalSpeed);
+  });
+});
+
+describe('T013: Game Loop Integration Tests', () => {
+  test('aliens move after exact movement delay ticks', () => {
+    const gameState = initializeGame();
+    const originalAlienX = gameState.alienFormation.aliens[0][0].x;
+    
+    // Simulate game ticks - aliens should move after baseMovementDelay frames
+    for (let frame = 0; frame < gameState.alienFormation.baseMovementDelay - 1; frame++) {
+      gameState.alienFormation.movementTimer++;
+      if (gameState.alienFormation.movementTimer >= gameState.alienFormation.baseMovementDelay) {
+        gameState.alienFormation = moveAliens(gameState.alienFormation);
+        gameState.alienFormation.movementTimer = 0;
+      }
+    }
+    
+    // After 47 frames, aliens should NOT have moved yet
+    expect(gameState.alienFormation.aliens[0][0].x).toBe(originalAlienX);
+    
+    // On the 48th frame, they should move
+    gameState.alienFormation.movementTimer++;
+    if (gameState.alienFormation.movementTimer >= gameState.alienFormation.baseMovementDelay) {
+      gameState.alienFormation = moveAliens(gameState.alienFormation);
+      gameState.alienFormation.movementTimer = 0;
+    }
+    
+    // Now aliens should have moved by their speed (4 pixels)
+    expect(gameState.alienFormation.aliens[0][0].x).toBe(originalAlienX + 4);
+  });
+  
+  test('full game loop simulation shows alien movement over multiple cycles', () => {
+    const gameState = initializeGame();
+    const originalAlienX = gameState.alienFormation.aliens[0][0].x;
+    let totalFrames = 0;
+    let movements = 0;
+    
+    // Simulate 200 frames of the game loop (about 3.3 seconds at 60fps)
+    for (let frame = 0; frame < 200; frame++) {
+      totalFrames++;
+      
+      // This mirrors the browser updateGame() function
+      gameState.alienFormation.movementTimer++;
+      if (gameState.alienFormation.movementTimer >= gameState.alienFormation.baseMovementDelay) {
+        gameState.alienFormation = moveAliens(gameState.alienFormation);
+        gameState.alienFormation.movementTimer = 0;
+        movements++;
+      }
+    }
+    
+    // After 200 frames, we should have had at least 4 movement cycles (200/48 = 4.16)
+    expect(movements).toBeGreaterThanOrEqual(4);
+    
+    // The alien should have moved from its original position
+    const finalAlienX = gameState.alienFormation.aliens[0][0].x; 
+    expect(finalAlienX).not.toBe(originalAlienX);
+  });
+
+  test('collision detection works between player bullet and aliens', () => {
+    const gameState = initializeGame();
+    
+    // Position player bullet to hit first alien
+    const firstAlien = gameState.alienFormation.aliens[0][0];
+    gameState.playerBullet = new Bullet(
+      firstAlien.x + 5, // Inside alien bounds
+      firstAlien.y + 5,
+      8,
+      'player'
+    );
+    
+    // Test collision
+    const collision = checkBulletAlienCollision(gameState.playerBullet, firstAlien);
+    expect(collision).toBe(true);
+    
+    // After collision, alien should be marked as dead and bullet as inactive
+    if (collision) {
+      firstAlien.alive = false;
+      gameState.playerBullet.active = false;
+      gameState.alienFormation.aliveCount--;
+      gameState.player.score = updateScore(gameState.player.score, firstAlien.type);
+    }
+    
+    expect(firstAlien.alive).toBe(false);
+    expect(gameState.playerBullet.active).toBe(false);
+    expect(gameState.alienFormation.aliveCount).toBe(54);
+    expect(gameState.player.score).toBe(30); // Octopus = 30 points
   });
 });
 
